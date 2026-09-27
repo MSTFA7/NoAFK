@@ -1,4 +1,5 @@
 mod controller;
+mod passthrough;
 mod scheduler;
 mod state;
 mod tray;
@@ -13,6 +14,11 @@ use tauri_plugin_global_shortcut::ShortcutState;
 #[tauri::command]
 fn get_status(state: tauri::State<Arc<AppState>>) -> StatusPayload {
     state.get_status()
+}
+
+#[tauri::command]
+fn set_passthrough(state: tauri::State<Arc<AppState>>, enabled: bool) {
+    state.passthrough_enabled.store(enabled, Ordering::Relaxed);
 }
 
 #[tauri::command]
@@ -123,6 +129,7 @@ pub fn run() {
         .manage(state.clone())
         .invoke_handler(tauri::generate_handler![
             get_status,
+            set_passthrough,
             set_running,
             set_interval,
             set_pattern,
@@ -136,6 +143,12 @@ pub fn run() {
 
             // Setup system tray
             let _ = tray::setup_tray(&app_handle, state_clone.clone());
+
+            // Start controller passthrough background loop
+            passthrough::start_passthrough_loop(
+                controller_clone.clone(),
+                state_clone.clone(),
+            );
 
             // Start scheduler background loop
             scheduler::start_loop(

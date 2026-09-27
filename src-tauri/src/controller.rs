@@ -1,15 +1,18 @@
 use crate::state::PulsePattern;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use vigem_client::{Client, TargetId, Xbox360Wired, XGamepad, XButtons};
 
 pub struct VirtualController {
     target: Mutex<Option<Xbox360Wired<Client>>>,
+    pub is_pulsing: AtomicBool,
 }
 
 impl VirtualController {
     pub fn new() -> Self {
         let instance = Self {
             target: Mutex::new(None),
+            is_pulsing: AtomicBool::new(false),
         };
         let _ = instance.connect();
         instance
@@ -41,7 +44,24 @@ impl VirtualController {
         }
     }
 
+    pub fn update_raw(&self, gamepad: &XGamepad) -> anyhow::Result<()> {
+        let mut target_lock = self.target.lock().unwrap();
+        if let Some(target) = target_lock.as_mut() {
+            target.update(gamepad)?;
+            Ok(())
+        } else {
+            anyhow::bail!("Virtual controller not connected");
+        }
+    }
+
     pub fn pulse(&self, pattern: PulsePattern) -> anyhow::Result<()> {
+        self.is_pulsing.store(true, Ordering::SeqCst);
+        let res = self.pulse_internal(pattern);
+        self.is_pulsing.store(false, Ordering::SeqCst);
+        res
+    }
+
+    fn pulse_internal(&self, pattern: PulsePattern) -> anyhow::Result<()> {
         let mut target_lock = self.target.lock().unwrap();
         let target = match target_lock.as_mut() {
             Some(t) => t,
@@ -53,37 +73,39 @@ impl VirtualController {
         let mut gamepad = XGamepad::default();
         match pattern {
             PulsePattern::RightStickNudge => {
-                gamepad.thumb_rx = 2000;
+                // Break past XInput deadzone (8689) and GTA deadzones (~10000)
+                gamepad.thumb_rx = 24000;
                 target.update(&gamepad)?;
-                std::thread::sleep(std::time::Duration::from_millis(150));
+                std::thread::sleep(std::time::Duration::from_millis(300));
             }
             PulsePattern::LeftStickNudge => {
-                gamepad.thumb_lx = 2000;
+                gamepad.thumb_lx = 24000;
                 target.update(&gamepad)?;
-                std::thread::sleep(std::time::Duration::from_millis(150));
+                std::thread::sleep(std::time::Duration::from_millis(300));
             }
             PulsePattern::DpadTap => {
+                // D-pad UP opens phone in GTA V
                 gamepad.buttons = XButtons!(UP);
                 target.update(&gamepad)?;
-                std::thread::sleep(std::time::Duration::from_millis(150));
+                std::thread::sleep(std::time::Duration::from_millis(250));
             }
             PulsePattern::TriggerTap => {
-                gamepad.right_trigger = 30;
+                // Trigger threshold in XInput is 30, use 220 (85%) to register past deadzones
+                gamepad.right_trigger = 220;
                 target.update(&gamepad)?;
-                std::thread::sleep(std::time::Duration::from_millis(150));
+                std::thread::sleep(std::time::Duration::from_millis(250));
             }
             PulsePattern::Spin => {
                 use rand::Rng;
                 let dir: i32 = if rand::thread_rng().gen_bool(0.5) { 1 } else { -1 };
-                let dev_lx = rand::thread_rng().gen_range(-1500..=1500);
-                let dev_ly = rand::thread_rng().gen_range(-1000..=1000);
-                let dev_rx = rand::thread_rng().gen_range(-1500..=1500);
-                let dev_ry = rand::thread_rng().gen_range(-1000..=1000);
+                let dev_lx = rand::thread_rng().gen_range(-2000..=2000);
+                let dev_ly = rand::thread_rng().gen_range(-2000..=2000);
+                let dev_rx = rand::thread_rng().gen_range(-2000..=2000);
 
-                gamepad.thumb_lx = ((18000 * dir) + dev_lx).clamp(-32000, 32000) as i16;
-                gamepad.thumb_ly = dev_ly.clamp(-32000, 32000) as i16;
-                gamepad.thumb_rx = ((18000 * dir) + dev_rx).clamp(-32000, 32000) as i16;
-                gamepad.thumb_ry = dev_ry.clamp(-32000, 32000) as i16;
+                // Both walk and turn camera with natural variation
+                gamepad.thumb_lx = ((24000 * dir) + dev_lx).clamp(-32000, 32000) as i16;
+                gamepad.thumb_ly = (16000 + dev_ly).clamp(-32000, 32000) as i16;
+                gamepad.thumb_rx = ((26000 * dir) + dev_rx).clamp(-32000, 32000) as i16;
 
                 target.update(&gamepad)?;
                 std::thread::sleep(std::time::Duration::from_millis(1000));

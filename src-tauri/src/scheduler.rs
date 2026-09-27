@@ -41,9 +41,34 @@ pub fn start_loop(
             let total_wait = base + jitter;
 
             // Countdown loop
-            for remaining in (1..=total_wait).rev() {
+            let mut remaining = total_wait;
+            while remaining > 0 {
                 if !state.running.load(Ordering::Relaxed) {
                     break;
+                }
+
+                // If passthrough is active and user touched physical controller recently, postpone countdown
+                if state.passthrough_enabled.load(Ordering::Relaxed) {
+                    let last_input = state.last_physical_input.load(Ordering::Relaxed);
+                    if last_input > 0 {
+                        let now = SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs();
+                        if now.saturating_sub(last_input) < 15 {
+                            remaining = total_wait;
+                            let _ = app_handle.emit(
+                                "pulse-tick",
+                                PulseTickPayload {
+                                    remaining_secs: remaining,
+                                    total_secs: total_wait,
+                                    is_running: true,
+                                },
+                            );
+                            std::thread::sleep(Duration::from_secs(1));
+                            continue;
+                        }
+                    }
                 }
 
                 let _ = app_handle.emit(
@@ -56,10 +81,24 @@ pub fn start_loop(
                 );
 
                 std::thread::sleep(Duration::from_secs(1));
+                remaining = remaining.saturating_sub(1);
             }
 
             // Check if still running after countdown
             if state.running.load(Ordering::Relaxed) {
+                if state.passthrough_enabled.load(Ordering::Relaxed) {
+                    let last_input = state.last_physical_input.load(Ordering::Relaxed);
+                    if last_input > 0 {
+                        let now = SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs();
+                        if now.saturating_sub(last_input) < 15 {
+                            continue;
+                        }
+                    }
+                }
+
                 let pattern = *state.pattern.lock().unwrap();
                 let pulse_res = controller.pulse(pattern);
 

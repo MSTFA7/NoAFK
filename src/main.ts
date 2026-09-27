@@ -12,6 +12,7 @@ interface StatusPayload {
   last_pulse_timestamp: number | null;
   driver_available: boolean;
   minimize_to_tray: boolean;
+  passthrough_enabled: boolean;
 }
 
 interface PulseTickPayload {
@@ -53,6 +54,7 @@ const lastPulseText = document.getElementById("last-pulse-text") as HTMLElement;
 const patternSelect = document.getElementById("pattern-select") as HTMLSelectElement;
 const intervalSlider = document.getElementById("interval-slider") as HTMLInputElement;
 const intervalDisplay = document.getElementById("interval-display") as HTMLElement;
+const passthroughToggle = document.getElementById("passthrough-toggle") as HTMLInputElement;
 const autostartToggle = document.getElementById("autostart-toggle") as HTMLInputElement;
 const minimizeTrayToggle = document.getElementById("minimize-tray-toggle") as HTMLInputElement;
 const footerNote = document.getElementById("footer-note") as HTMLElement;
@@ -202,6 +204,7 @@ function applyStatus(status: StatusPayload) {
   intervalDisplay.textContent = formatDuration(status.interval_secs);
 
   patternSelect.value = status.pattern;
+  passthroughToggle.checked = status.passthrough_enabled;
   minimizeTrayToggle.checked = status.minimize_to_tray;
   updateFooterNote(status.minimize_to_tray);
 }
@@ -337,6 +340,17 @@ btnOpenJoycpl.addEventListener("click", async () => {
     await invoke("open_game_controllers");
   } catch (err) {
     console.error("Failed to open joy.cpl:", err);
+  }
+});
+
+// Controller Passthrough toggle
+passthroughToggle.addEventListener("change", async () => {
+  const enabled = passthroughToggle.checked;
+  try {
+    await invoke("set_passthrough", { enabled });
+  } catch (err) {
+    console.error("Failed to set controller passthrough:", err);
+    passthroughToggle.checked = !enabled;
   }
 });
 

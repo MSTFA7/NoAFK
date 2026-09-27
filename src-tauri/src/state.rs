@@ -28,6 +28,8 @@ pub struct AppState {
     pub last_pulse_timestamp: Mutex<Option<u64>>,
     pub driver_available: AtomicBool,
     pub minimize_to_tray: AtomicBool,
+    pub passthrough_enabled: AtomicBool,
+    pub last_physical_input: AtomicU64,
 }
 
 impl Default for AppState {
@@ -40,6 +42,8 @@ impl Default for AppState {
             last_pulse_timestamp: Mutex::new(None),
             driver_available: AtomicBool::new(false),
             minimize_to_tray: AtomicBool::new(true),
+            passthrough_enabled: AtomicBool::new(true),
+            last_physical_input: AtomicU64::new(0),
         }
     }
 }
@@ -53,6 +57,7 @@ pub struct StatusPayload {
     pub last_pulse_timestamp: Option<u64>,
     pub driver_available: bool,
     pub minimize_to_tray: bool,
+    pub passthrough_enabled: bool,
 }
 
 impl AppState {
@@ -65,6 +70,7 @@ impl AppState {
             last_pulse_timestamp: *self.last_pulse_timestamp.lock().unwrap(),
             driver_available: self.driver_available.load(Ordering::Relaxed),
             minimize_to_tray: self.minimize_to_tray.load(Ordering::Relaxed),
+            passthrough_enabled: self.passthrough_enabled.load(Ordering::Relaxed),
         }
     }
 }
@@ -83,6 +89,7 @@ mod tests {
         assert_eq!(status.pulse_count, 0);
         assert_eq!(status.last_pulse_timestamp, None);
         assert!(status.minimize_to_tray);
+        assert!(status.passthrough_enabled);
     }
 
     #[test]
@@ -113,6 +120,7 @@ mod tests {
             last_pulse_timestamp: Some(1700000000),
             driver_available: true,
             minimize_to_tray: true,
+            passthrough_enabled: true,
         };
 
         let json = serde_json::to_string(&payload).unwrap();
@@ -124,5 +132,6 @@ mod tests {
         assert_eq!(decoded.last_pulse_timestamp, Some(1700000000));
         assert_eq!(decoded.driver_available, true);
         assert_eq!(decoded.minimize_to_tray, true);
+        assert_eq!(decoded.passthrough_enabled, true);
     }
 }

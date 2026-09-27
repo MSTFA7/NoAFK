@@ -5,6 +5,7 @@ A lightweight Windows utility that prevents idle timeouts by simulating subtle c
 ## Features
 
 - **Virtual Controller Input**: Sends brief, non-intrusive stick or button inputs.
+- **Controller Passthrough**: Transparently forwards physical controller inputs through the virtual controller, pausing anti-AFK pulses during active gameplay so you never have to restart the game to play.
 - **Input Patterns**: Right stick nudge, left stick nudge, D-pad tap, trigger tap, and dual-stick spin.
 - **Randomized Timing**: Adds timing variations to avoid mechanical repetition.
 - **Global Shortcut**: Press `Ctrl + Alt + A` to toggle active state from anywhere.
