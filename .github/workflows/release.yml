@@ -1,0 +1,54 @@
+name: Release NoAFK
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'windows-latest'
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build Tauri Application & Create GitHub Release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: 'NoAFK v__VERSION__'
+          releaseBody: |
+            ### NoAFK v__VERSION__
+            
+            #### Prerequisites:
+            - Requires the **ViGEmBus** driver: [Download ViGEmBus](https://github.com/ViGEm/ViGEmBus/releases)
+            
+            #### Download:
+            - **Installer**: `NoAFK___VERSION___x64-setup.exe` (run to install)
+            - **Portable**: `noafk.exe`
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}
