@@ -19,9 +19,9 @@ A lightweight Windows utility that prevents idle timeouts by simulating subtle c
 ## Installation
 
 1. Install the [ViGEmBus Driver](https://github.com/ViGEm/ViGEmBus/releases) if not already installed.
-2. Download and run `NoAFK_0.1.0_x64-setup.exe` from the Releases section.
+2. Download and run [NoAFK_0.1.0_x64-setup.exe](https://github.com/MSTFA7/NoAFK/releases/download/v0.1.0/NoAFK_0.1.0_x64-setup.exe) from the [Releases](https://github.com/MSTFA7/NoAFK/releases/latest) page.
 
-A standalone portable executable (`noafk.exe`) is also provided.
+A standalone portable executable ([noafk.exe](https://github.com/MSTFA7/NoAFK/releases/download/v0.1.0/noafk.exe)) is also available.
 
 ## Build from Source
 
