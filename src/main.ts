@@ -22,6 +22,7 @@ interface DriftTickPayload {
   lx: number;
   ly: number;
   is_user_active: boolean;
+  next_change_ms: number;
 }
 
 interface PulseTickPayload {
@@ -68,6 +69,9 @@ const btnModeDrift = document.getElementById("btn-mode-drift") as HTMLButtonElem
 const btnModePulse = document.getElementById("btn-mode-pulse") as HTMLButtonElement;
 const modeCaption = document.getElementById("mode-caption") as HTMLElement;
 const driftInfoBox = document.getElementById("drift-info-box") as HTMLElement;
+const driftInfoMag = document.getElementById("drift-info-mag") as HTMLElement | null;
+const driftInfoHeading = document.getElementById("drift-info-heading") as HTMLElement | null;
+const driftInfoNext = document.getElementById("drift-info-next") as HTMLElement | null;
 const pulseSettingsGroup = document.getElementById("pulse-settings-group") as HTMLElement;
 
 const patternSelect = document.getElementById("pattern-select") as HTMLSelectElement;
@@ -78,8 +82,8 @@ const autostartToggle = document.getElementById("autostart-toggle") as HTMLInput
 const minimizeTrayToggle = document.getElementById("minimize-tray-toggle") as HTMLInputElement;
 const footerNote = document.getElementById("footer-note") as HTMLElement;
 
-const ctrlRightStick = document.getElementById("ctrl-right-stick") as HTMLElement | null;
-const ctrlLeftStick = document.getElementById("ctrl-left-stick") as HTMLElement | null;
+const ctrlRightStickCap = document.getElementById("ctrl-right-stick-cap") as SVGElement | null;
+const ctrlLeftStickCap = document.getElementById("ctrl-left-stick-cap") as SVGElement | null;
 
 // Modal Elements
 const modalOverlay = document.getElementById("modal-overlay") as HTMLElement;
@@ -154,6 +158,20 @@ function formatCountdown(remaining: number): string {
   return secs > 0 ? `~${mins}m ${secs}s` : `~${mins}m`;
 }
 
+function getCompassHeading(rx: number, ry: number): { angle: number; label: string; magPct: number; magRaw: number } {
+  const magRaw = Math.round(Math.sqrt(rx * rx + ry * ry));
+  const magPct = Math.min(100, Math.round((magRaw / 32768) * 100));
+  if (magRaw < 1500) {
+    return { angle: 0, label: "Center (Rest)", magPct: 0, magRaw };
+  }
+  let deg = Math.round((Math.atan2(ry, rx) * 180) / Math.PI);
+  if (deg < 0) deg += 360;
+
+  const directions = ["E", "ENE", "NE", "NNE", "N", "NNW", "NW", "WNW", "W", "WSW", "SW", "SSW", "S", "SSE", "SE", "ESE"];
+  const idx = Math.round(deg / 22.5) % 16;
+  return { angle: deg, label: `${deg}° (${directions[idx]})`, magPct, magRaw };
+}
+
 function updateModeUI(mode: "drift" | "pulse") {
   currentMode = mode;
   if (mode === "drift") {
@@ -162,14 +180,28 @@ function updateModeUI(mode: "drift" | "pulse") {
     modeCaption.textContent = "Continuous organic stick drift with zero pattern. Immune to idle detection.";
     driftInfoBox.classList.remove("hidden");
     pulseSettingsGroup.classList.add("hidden");
-    btnTestPulse.classList.add("hidden");
+    btnTestPulse.classList.remove("hidden");
+    btnTestPulse.textContent = "Nudge Drift";
+    btnTestPulse.title = "Steer stick to a new heading now";
 
-    telemLbl1.textContent = "Mode";
-    countdownValue.textContent = "Drift";
-    telemLbl2.textContent = "Motion";
-    lastPulseText.textContent = currentRunning ? "Organic" : "Paused";
-    telemLbl3.textContent = "Cadence";
-    pulseCountText.textContent = "Dynamic";
+    telemLbl1.textContent = "Shift In";
+    telemLbl2.textContent = "R-Stick";
+    telemLbl3.textContent = "Status";
+
+    if (currentRunning) {
+      countdownValue.textContent = "~2.0s";
+      lastPulseText.textContent = "Drifting";
+      pulseCountText.textContent = "Drifting";
+      controllerVisualizer.classList.add("drift-active");
+    } else {
+      countdownValue.textContent = "--";
+      lastPulseText.textContent = "Paused";
+      pulseCountText.textContent = "Paused";
+      controllerVisualizer.classList.remove("drift-active");
+      if (driftInfoNext) driftInfoNext.textContent = "Paused";
+      if (driftInfoMag) driftInfoMag.textContent = "--";
+      if (driftInfoHeading) driftInfoHeading.textContent = "--";
+    }
   } else {
     btnModeDrift.classList.remove("active");
     btnModePulse.classList.add("active");
@@ -177,11 +209,17 @@ function updateModeUI(mode: "drift" | "pulse") {
     driftInfoBox.classList.add("hidden");
     pulseSettingsGroup.classList.remove("hidden");
     btnTestPulse.classList.remove("hidden");
+    btnTestPulse.textContent = "Test Pulse";
+    btnTestPulse.title = "Send a single pulse now";
 
     telemLbl1.textContent = "Next";
     telemLbl2.textContent = "Last";
     telemLbl3.textContent = "Sent";
     countdownValue.textContent = currentRunning ? "--" : "--";
+    controllerVisualizer.classList.remove("drift-active");
+
+    if (ctrlRightStickCap) ctrlRightStickCap.style.transform = "translate(0px, 0px)";
+    if (ctrlLeftStickCap) ctrlLeftStickCap.style.transform = "translate(0px, 0px)";
   }
 }
 
@@ -193,20 +231,28 @@ function updatePowerState(running: boolean) {
     powerStatusSub.textContent = currentMode === "drift" ? "Random stick drift active" : "Anti-AFK pulses running";
     powerToggleBtn.className = "power-button active";
     if (currentMode === "drift") {
-      lastPulseText.textContent = "Organic";
+      pulseCountText.textContent = "Drifting";
+      controllerVisualizer.classList.add("drift-active");
     }
   } else {
     powerStatusLabel.textContent = "PAUSED";
     powerStatusLabel.className = "power-state-title paused";
     powerStatusSub.textContent = currentMode === "drift" ? "Click button to start drift" : "Click button to start pulses";
     powerToggleBtn.className = "power-button";
+    controllerVisualizer.classList.remove("drift-active");
+
     if (currentMode === "drift") {
+      countdownValue.textContent = "--";
       lastPulseText.textContent = "Paused";
+      pulseCountText.textContent = "Paused";
+      if (driftInfoNext) driftInfoNext.textContent = "Paused";
+      if (driftInfoMag) driftInfoMag.textContent = "--";
+      if (driftInfoHeading) driftInfoHeading.textContent = "--";
     } else {
       countdownValue.textContent = "--";
     }
-    if (ctrlRightStick) ctrlRightStick.style.transform = "translate(0px, 0px)";
-    if (ctrlLeftStick) ctrlLeftStick.style.transform = "translate(0px, 0px)";
+    if (ctrlRightStickCap) ctrlRightStickCap.style.transform = "translate(0px, 0px)";
+    if (ctrlLeftStickCap) ctrlLeftStickCap.style.transform = "translate(0px, 0px)";
   }
 }
 
@@ -308,23 +354,57 @@ async function initApp() {
 
     await listen<DriftTickPayload>("drift-tick", (event) => {
       if (currentMode !== "drift" || !currentRunning) return;
+
       if (event.payload.is_user_active) {
-        lastPulseText.textContent = "Player Active";
-        if (ctrlRightStick) ctrlRightStick.style.transform = "translate(0px, 0px)";
-        if (ctrlLeftStick) ctrlLeftStick.style.transform = "translate(0px, 0px)";
+        pulseCountText.textContent = "Player Active";
+        lastPulseText.textContent = "Yielding";
+        countdownValue.textContent = "--";
+        if (ctrlRightStickCap) ctrlRightStickCap.style.transform = "translate(0px, 0px)";
+        if (ctrlLeftStickCap) ctrlLeftStickCap.style.transform = "translate(0px, 0px)";
+        controllerVisualizer.classList.remove("drift-active");
+        if (driftInfoHeading) driftInfoHeading.textContent = "Physical Player Active";
+        if (driftInfoMag) driftInfoMag.textContent = "0% (Yielding)";
+        if (driftInfoNext) driftInfoNext.textContent = "Holding";
         return;
-      } else {
-        lastPulseText.textContent = "Organic";
       }
 
-      const maxPx = 14;
-      const rightDx = (event.payload.rx / 32768) * maxPx;
-      const rightDy = (-event.payload.ry / 32768) * maxPx;
-      const leftDx = (event.payload.lx / 32768) * maxPx;
-      const leftDy = (-event.payload.ly / 32768) * maxPx;
+      controllerVisualizer.classList.add("drift-active");
+      pulseCountText.textContent = "Drifting";
 
-      if (ctrlRightStick) ctrlRightStick.style.transform = `translate(${rightDx.toFixed(1)}px, ${rightDy.toFixed(1)}px)`;
-      if (ctrlLeftStick) ctrlLeftStick.style.transform = `translate(${leftDx.toFixed(1)}px, ${leftDy.toFixed(1)}px)`;
+      // Countdown to next wander shift
+      const shiftSecs = (event.payload.next_change_ms / 1000).toFixed(1);
+      countdownValue.textContent = `~${shiftSecs}s`;
+      if (driftInfoNext) driftInfoNext.textContent = `~${shiftSecs}s`;
+
+      // Live coordinates & heading
+      const heading = getCompassHeading(event.payload.rx, event.payload.ry);
+      const rxPct = Math.round((event.payload.rx / 32768) * 100);
+      const ryPct = Math.round((event.payload.ry / 32768) * 100);
+      const rxSign = rxPct >= 0 ? "+" : "";
+      const rySign = ryPct >= 0 ? "+" : "";
+
+      lastPulseText.textContent = `X:${rxSign}${rxPct}% Y:${rySign}${ryPct}%`;
+
+      if (driftInfoMag) {
+        driftInfoMag.textContent = `${heading.magPct}% (${heading.magRaw.toLocaleString()} / 32k)`;
+      }
+      if (driftInfoHeading) {
+        driftInfoHeading.textContent = heading.label;
+      }
+
+      // Smooth deflection of stick caps inside SVG socket
+      const maxSvgUnits = 36;
+      const rightDx = (event.payload.rx / 32768) * maxSvgUnits;
+      const rightDy = (-event.payload.ry / 32768) * maxSvgUnits;
+      const leftDx = (event.payload.lx / 32768) * maxSvgUnits;
+      const leftDy = (-event.payload.ly / 32768) * maxSvgUnits;
+
+      if (ctrlRightStickCap) {
+        ctrlRightStickCap.style.transform = `translate(${rightDx.toFixed(1)}px, ${rightDy.toFixed(1)}px)`;
+      }
+      if (ctrlLeftStickCap) {
+        ctrlLeftStickCap.style.transform = `translate(${leftDx.toFixed(1)}px, ${leftDy.toFixed(1)}px)`;
+      }
     });
   } catch (err) {
     console.error("Initialization error:", err);
@@ -334,6 +414,10 @@ async function initApp() {
 // Mode Selection
 btnModeDrift.addEventListener("click", async () => {
   try {
+    if (!currentRunning) {
+      const started = await invoke<StatusPayload>("set_running", { value: true });
+      applyStatus(started);
+    }
     const updated = await invoke<StatusPayload>("set_mode", { mode: "drift" });
     applyStatus(updated);
   } catch (err) {
@@ -343,6 +427,10 @@ btnModeDrift.addEventListener("click", async () => {
 
 btnModePulse.addEventListener("click", async () => {
   try {
+    if (!currentRunning) {
+      const started = await invoke<StatusPayload>("set_running", { value: true });
+      applyStatus(started);
+    }
     const updated = await invoke<StatusPayload>("set_mode", { mode: "pulse" });
     applyStatus(updated);
   } catch (err) {
@@ -386,22 +474,44 @@ intervalSlider.addEventListener("change", async () => {
   }
 });
 
-// Test Pulse Button
+// Action Button (Test Pulse / Nudge Drift)
 btnTestPulse.addEventListener("click", async () => {
-  try {
-    btnTestPulse.disabled = true;
-    btnTestPulse.textContent = "Pulsing...";
-    await invoke<string>("test_pulse");
-    triggerPulseAnimation(patternSelect.value);
+  if (currentMode === "drift") {
+    try {
+      if (!currentRunning) {
+        const started = await invoke<StatusPayload>("set_running", { value: true });
+        applyStatus(started);
+      }
+      btnTestPulse.disabled = true;
+      btnTestPulse.textContent = "Nudging...";
+      await invoke("nudge_drift");
 
-    const status = await invoke<StatusPayload>("get_status");
-    applyStatus(status);
-  } catch (err) {
-    showModal("Pulse Error", `Failed to send pulse: ${err}\nPlease ensure ViGEmBus is installed.`);
-    updateDriverState(false);
-  } finally {
-    btnTestPulse.disabled = false;
-    btnTestPulse.textContent = "Test Pulse";
+      controllerVisualizer.classList.add("nudge-flash");
+      setTimeout(() => {
+        controllerVisualizer.classList.remove("nudge-flash");
+      }, 350);
+    } catch (err) {
+      console.error("Nudge drift error:", err);
+    } finally {
+      btnTestPulse.disabled = false;
+      btnTestPulse.textContent = "Nudge Drift";
+    }
+  } else {
+    try {
+      btnTestPulse.disabled = true;
+      btnTestPulse.textContent = "Pulsing...";
+      await invoke<string>("test_pulse");
+      triggerPulseAnimation(patternSelect.value);
+
+      const status = await invoke<StatusPayload>("get_status");
+      applyStatus(status);
+    } catch (err) {
+      showModal("Pulse Error", `Failed to send pulse: ${err}\nPlease ensure ViGEmBus is installed.`);
+      updateDriverState(false);
+    } finally {
+      btnTestPulse.disabled = false;
+      btnTestPulse.textContent = "Test Pulse";
+    }
   }
 });
 

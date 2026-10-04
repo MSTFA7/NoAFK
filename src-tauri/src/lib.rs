@@ -95,6 +95,12 @@ fn reconnect_controller(
 }
 
 #[tauri::command]
+fn nudge_drift(state: tauri::State<Arc<AppState>>) -> Result<(), String> {
+    state.force_drift_shift.store(true, Ordering::SeqCst);
+    Ok(())
+}
+
+#[tauri::command]
 fn open_game_controllers() -> Result<(), String> {
     std::process::Command::new("joy.cpl")
         .spawn()
@@ -148,6 +154,7 @@ pub fn run() {
             set_pattern,
             set_minimize_to_tray,
             test_pulse,
+            nudge_drift,
             reconnect_controller,
             open_game_controllers
         ])

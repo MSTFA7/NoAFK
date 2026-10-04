@@ -31,6 +31,7 @@ pub struct DriftTickPayload {
     pub lx: i16,
     pub ly: i16,
     pub is_user_active: bool,
+    pub next_change_ms: u64,
 }
 
 struct DriftState {
@@ -69,6 +70,11 @@ impl DriftState {
         state: &AppState,
     ) {
         let mut rng = rand::thread_rng();
+
+        // Check if user clicked "Nudge Drift" to force an immediate new heading
+        if state.force_drift_shift.swap(false, Ordering::SeqCst) {
+            self.next_change = Instant::now();
+        }
 
         // 1. Pick a new random target when interval expires
         if Instant::now() >= self.next_change {
@@ -139,6 +145,11 @@ impl DriftState {
         // Emit UI event at ~15Hz for smooth visualizer display
         if self.last_ui_emit.elapsed() >= Duration::from_millis(66) {
             self.last_ui_emit = Instant::now();
+            let next_ms = if self.next_change > Instant::now() {
+                (self.next_change - Instant::now()).as_millis() as u64
+            } else {
+                0
+            };
             let _ = app_handle.emit(
                 "drift-tick",
                 DriftTickPayload {
@@ -147,6 +158,7 @@ impl DriftState {
                     lx: if is_user_active { 0 } else { final_lx },
                     ly: if is_user_active { 0 } else { final_ly },
                     is_user_active,
+                    next_change_ms: next_ms,
                 },
             );
         }

@@ -6,6 +6,16 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use vigem_client::{XButtons, XGamepad};
 
+#[derive(Default)]
+struct SlotTracker {
+    last_packet: u32,
+    rest_lx: i16,
+    rest_ly: i16,
+    rest_rx: i16,
+    rest_ry: i16,
+    calibrated: bool,
+}
+
 pub fn start_passthrough_loop(
     controller: Arc<VirtualController>,
     state: Arc<AppState>,
@@ -19,6 +29,7 @@ pub fn start_passthrough_loop(
             }
         };
 
+        let mut trackers: [SlotTracker; 4] = Default::default();
         let mut active_physical_slot: Option<u32> = None;
         let mut last_activity_time = Instant::now() - Duration::from_secs(10);
         let mut has_reset_to_neutral = true;
@@ -53,15 +64,37 @@ pub fn start_passthrough_loop(
 
             for &slot in &candidate_slots {
                 if let Ok(xstate) = xinput.get_state(slot) {
-                    let pad = xstate.raw.Gamepad;
+                    let raw = xstate.raw;
+                    let pad = raw.Gamepad;
+                    let tracker = &mut trackers[slot as usize];
 
-                    let has_activity = pad.wButtons != 0
-                        || pad.bLeftTrigger > 25
-                        || pad.bRightTrigger > 25
-                        || pad.sThumbLX.abs() > 3500
-                        || pad.sThumbLY.abs() > 3500
-                        || pad.sThumbRX.abs() > 3500
-                        || pad.sThumbRY.abs() > 3500;
+                    if !tracker.calibrated {
+                        tracker.last_packet = raw.dwPacketNumber;
+                        tracker.rest_lx = pad.sThumbLX;
+                        tracker.rest_ly = pad.sThumbLY;
+                        tracker.rest_rx = pad.sThumbRX;
+                        tracker.rest_ry = pad.sThumbRY;
+                        tracker.calibrated = true;
+                    }
+
+                    // A change in packet number indicates the controller sent a new hardware report
+                    let packet_changed = raw.dwPacketNumber != tracker.last_packet;
+
+                    // Movement relative to calibrated rest baseline
+                    let delta_lx = (pad.sThumbLX as i32 - tracker.rest_lx as i32).abs();
+                    let delta_ly = (pad.sThumbLY as i32 - tracker.rest_ly as i32).abs();
+                    let delta_rx = (pad.sThumbRX as i32 - tracker.rest_rx as i32).abs();
+                    let delta_ry = (pad.sThumbRY as i32 - tracker.rest_ry as i32).abs();
+
+                    let stick_deflected = delta_lx > 6000 || delta_ly > 6000 || delta_rx > 6000 || delta_ry > 6000;
+                    let trigger_pulled = pad.bLeftTrigger > 35 || pad.bRightTrigger > 35;
+                    let button_pressed = pad.wButtons != 0;
+
+                    let has_activity = (packet_changed && stick_deflected) || trigger_pulled || button_pressed;
+
+                    if packet_changed {
+                        tracker.last_packet = raw.dwPacketNumber;
+                    }
 
                     if has_activity {
                         active_physical_slot = Some(slot);
@@ -88,12 +121,14 @@ pub fn start_passthrough_loop(
                         forwarded = true;
                         break;
                     }
+                } else {
+                    trackers[slot as usize] = SlotTracker::default();
                 }
             }
 
             if !forwarded {
-                if last_activity_time.elapsed() < Duration::from_millis(200) {
-                    // Quick decay forwarding of physical state within 200ms
+                if last_activity_time.elapsed() < Duration::from_millis(250) {
+                    // Quick decay forwarding of physical state within 250ms
                     if let Some(slot) = active_physical_slot {
                         if let Ok(xstate) = xinput.get_state(slot) {
                             let pad = xstate.raw.Gamepad;

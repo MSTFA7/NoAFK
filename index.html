@@ -125,13 +125,15 @@
                 <!-- Right Stick -->
                 <g id="ctrl-right-stick" class="ctrl-stick-group">
                   <circle cx="670.5" cy="446.5" r="77.5" class="ctrl-stick-base" stroke-width="3.5"></circle>
-                  <circle cx="671.5" cy="446.5" r="64.5" class="ctrl-stick-cap" stroke-width="3.5"></circle>
+                  <circle cx="670.5" cy="446.5" r="3" class="ctrl-stick-center-dot" fill="#2d2d2d"></circle>
+                  <circle id="ctrl-right-stick-cap" cx="671.5" cy="446.5" r="64.5" class="ctrl-stick-cap" stroke-width="3.5"></circle>
                 </g>
 
                 <!-- Left Stick -->
                 <g id="ctrl-left-stick" class="ctrl-stick-group">
                   <circle cx="266" cy="288" r="78" class="ctrl-stick-base" stroke-width="3.5"></circle>
-                  <circle cx="265.5" cy="289.5" r="63.5" class="ctrl-stick-cap" stroke-width="3.5"></circle>
+                  <circle cx="266" cy="288" r="3" class="ctrl-stick-center-dot" fill="#2d2d2d"></circle>
+                  <circle id="ctrl-left-stick-cap" cx="265.5" cy="289.5" r="63.5" class="ctrl-stick-cap" stroke-width="3.5"></circle>
                 </g>
 
                 <!-- View / Menu Pills -->
@@ -225,16 +227,16 @@
         <!-- Drift Info Box (shown in Drift mode) -->
         <div id="drift-info-box" class="drift-info-box">
           <div class="drift-info-row">
-            <span class="drift-info-label">Stick Movement:</span>
-            <span class="drift-info-val">Analog (16k - 24k)</span>
+            <span class="drift-info-label">Stick Magnitude:</span>
+            <span id="drift-info-mag" class="drift-info-val">--</span>
           </div>
           <div class="drift-info-row">
-            <span class="drift-info-label">Direction Changes:</span>
-            <span class="drift-info-val">Dynamic (1.8s - 4.2s)</span>
+            <span class="drift-info-label">Current Heading:</span>
+            <span id="drift-info-heading" class="drift-info-val">--</span>
           </div>
           <div class="drift-info-row">
-            <span class="drift-info-label">Pattern:</span>
-            <span class="drift-info-val">Zero (Continuous Random Walk)</span>
+            <span class="drift-info-label">Next Course Shift:</span>
+            <span id="drift-info-next" class="drift-info-val">--</span>
           </div>
         </div>
 

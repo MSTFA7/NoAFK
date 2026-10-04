@@ -44,6 +44,7 @@ pub struct AppState {
     pub minimize_to_tray: AtomicBool,
     pub passthrough_enabled: AtomicBool,
     pub last_physical_input: AtomicU64,
+    pub force_drift_shift: AtomicBool,
 }
 
 impl Default for AppState {
@@ -59,6 +60,7 @@ impl Default for AppState {
             minimize_to_tray: AtomicBool::new(true),
             passthrough_enabled: AtomicBool::new(true),
             last_physical_input: AtomicU64::new(0),
+            force_drift_shift: AtomicBool::new(false),
         }
     }
 }
