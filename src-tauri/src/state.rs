@@ -20,8 +20,22 @@ impl Default for PulsePattern {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OperationMode {
+    Drift,
+    Pulse,
+}
+
+impl Default for OperationMode {
+    fn default() -> Self {
+        Self::Drift
+    }
+}
+
 pub struct AppState {
     pub running: AtomicBool,
+    pub mode: Mutex<OperationMode>,
     pub interval_secs: AtomicU64,
     pub pattern: Mutex<PulsePattern>,
     pub pulse_count: AtomicU64,
@@ -36,6 +50,7 @@ impl Default for AppState {
     fn default() -> Self {
         Self {
             running: AtomicBool::new(false),
+            mode: Mutex::new(OperationMode::default()),
             interval_secs: AtomicU64::new(90),
             pattern: Mutex::new(PulsePattern::default()),
             pulse_count: AtomicU64::new(0),
@@ -51,6 +66,7 @@ impl Default for AppState {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StatusPayload {
     pub running: bool,
+    pub mode: OperationMode,
     pub interval_secs: u64,
     pub pattern: PulsePattern,
     pub pulse_count: u64,
@@ -64,6 +80,7 @@ impl AppState {
     pub fn get_status(&self) -> StatusPayload {
         StatusPayload {
             running: self.running.load(Ordering::Relaxed),
+            mode: *self.mode.lock().unwrap(),
             interval_secs: self.interval_secs.load(Ordering::Relaxed),
             pattern: *self.pattern.lock().unwrap(),
             pulse_count: self.pulse_count.load(Ordering::Relaxed),
@@ -84,6 +101,7 @@ mod tests {
         let state = AppState::default();
         let status = state.get_status();
         assert!(!status.running);
+        assert_eq!(status.mode, OperationMode::Drift);
         assert_eq!(status.interval_secs, 90);
         assert_eq!(status.pattern, PulsePattern::RightStickNudge);
         assert_eq!(status.pulse_count, 0);
@@ -111,9 +129,24 @@ mod tests {
     }
 
     #[test]
+    fn test_mode_serde() {
+        let modes = [
+            (OperationMode::Drift, "\"drift\""),
+            (OperationMode::Pulse, "\"pulse\""),
+        ];
+        for (m, expected) in modes {
+            let s = serde_json::to_string(&m).unwrap();
+            assert_eq!(s, expected);
+            let d: OperationMode = serde_json::from_str(&s).unwrap();
+            assert_eq!(d, m);
+        }
+    }
+
+    #[test]
     fn test_status_payload_serde() {
         let payload = StatusPayload {
             running: true,
+            mode: OperationMode::Drift,
             interval_secs: 120,
             pattern: PulsePattern::Spin,
             pulse_count: 42,
@@ -126,6 +159,7 @@ mod tests {
         let json = serde_json::to_string(&payload).unwrap();
         let decoded: StatusPayload = serde_json::from_str(&json).unwrap();
         assert_eq!(decoded.running, true);
+        assert_eq!(decoded.mode, OperationMode::Drift);
         assert_eq!(decoded.interval_secs, 120);
         assert_eq!(decoded.pattern, PulsePattern::Spin);
         assert_eq!(decoded.pulse_count, 42);

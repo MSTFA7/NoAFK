@@ -32,9 +32,19 @@ impl VirtualController {
         let mut target = Xbox360Wired::new(client, TargetId::XBOX360_WIRED);
         target.plugin()?;
         target.wait_ready()?;
+        std::thread::sleep(std::time::Duration::from_millis(200));
 
         *target_lock = Some(target);
         Ok(())
+    }
+
+    pub fn get_user_index(&self) -> Option<u32> {
+        let mut target_lock = self.target.lock().unwrap();
+        if let Some(target) = target_lock.as_mut() {
+            target.get_user_index().ok()
+        } else {
+            None
+        }
     }
 
     pub fn unplug(&self) {

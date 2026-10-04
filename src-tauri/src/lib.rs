@@ -5,7 +5,7 @@ mod state;
 mod tray;
 
 use controller::VirtualController;
-use state::{AppState, PulsePattern, StatusPayload};
+use state::{AppState, OperationMode, PulsePattern, StatusPayload};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, WindowEvent};
@@ -14,6 +14,18 @@ use tauri_plugin_global_shortcut::ShortcutState;
 #[tauri::command]
 fn get_status(state: tauri::State<Arc<AppState>>) -> StatusPayload {
     state.get_status()
+}
+
+#[tauri::command]
+fn set_mode(
+    app: AppHandle,
+    state: tauri::State<Arc<AppState>>,
+    mode: OperationMode,
+) -> StatusPayload {
+    *state.mode.lock().unwrap() = mode;
+    let status = state.get_status();
+    let _ = app.emit("status-changed", &status);
+    status
 }
 
 #[tauri::command]
@@ -129,6 +141,7 @@ pub fn run() {
         .manage(state.clone())
         .invoke_handler(tauri::generate_handler![
             get_status,
+            set_mode,
             set_passthrough,
             set_running,
             set_interval,

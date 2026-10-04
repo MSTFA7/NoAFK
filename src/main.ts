@@ -6,6 +6,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 
 interface StatusPayload {
   running: boolean;
+  mode: "drift" | "pulse";
   interval_secs: number;
   pattern: "right_stick_nudge" | "left_stick_nudge" | "dpad_tap" | "trigger_tap" | "spin";
   pulse_count: number;
@@ -13,6 +14,14 @@ interface StatusPayload {
   driver_available: boolean;
   minimize_to_tray: boolean;
   passthrough_enabled: boolean;
+}
+
+interface DriftTickPayload {
+  rx: number;
+  ry: number;
+  lx: number;
+  ly: number;
+  is_user_active: boolean;
 }
 
 interface PulseTickPayload {
@@ -51,6 +60,16 @@ const countdownValue = document.getElementById("countdown-value") as HTMLElement
 const pulseCountText = document.getElementById("pulse-count-text") as HTMLElement;
 const lastPulseText = document.getElementById("last-pulse-text") as HTMLElement;
 
+const telemLbl1 = document.getElementById("telem-lbl-1") as HTMLElement;
+const telemLbl2 = document.getElementById("telem-lbl-2") as HTMLElement;
+const telemLbl3 = document.getElementById("telem-lbl-3") as HTMLElement;
+
+const btnModeDrift = document.getElementById("btn-mode-drift") as HTMLButtonElement;
+const btnModePulse = document.getElementById("btn-mode-pulse") as HTMLButtonElement;
+const modeCaption = document.getElementById("mode-caption") as HTMLElement;
+const driftInfoBox = document.getElementById("drift-info-box") as HTMLElement;
+const pulseSettingsGroup = document.getElementById("pulse-settings-group") as HTMLElement;
+
 const patternSelect = document.getElementById("pattern-select") as HTMLSelectElement;
 const intervalSlider = document.getElementById("interval-slider") as HTMLInputElement;
 const intervalDisplay = document.getElementById("interval-display") as HTMLElement;
@@ -58,6 +77,9 @@ const passthroughToggle = document.getElementById("passthrough-toggle") as HTMLI
 const autostartToggle = document.getElementById("autostart-toggle") as HTMLInputElement;
 const minimizeTrayToggle = document.getElementById("minimize-tray-toggle") as HTMLInputElement;
 const footerNote = document.getElementById("footer-note") as HTMLElement;
+
+const ctrlRightStick = document.getElementById("ctrl-right-stick") as HTMLElement | null;
+const ctrlLeftStick = document.getElementById("ctrl-left-stick") as HTMLElement | null;
 
 // Modal Elements
 const modalOverlay = document.getElementById("modal-overlay") as HTMLElement;
@@ -69,6 +91,7 @@ const modalCloseBtn = document.getElementById("modal-close-btn") as HTMLButtonEl
 const controllerVisualizer = document.getElementById("controller-visualizer") as HTMLElement;
 
 let currentRunning = false;
+let currentMode: "drift" | "pulse" = "drift";
 
 // Custom Titlebar Listeners
 titlebarMinimize.addEventListener("click", async () => {
@@ -131,19 +154,59 @@ function formatCountdown(remaining: number): string {
   return secs > 0 ? `~${mins}m ${secs}s` : `~${mins}m`;
 }
 
+function updateModeUI(mode: "drift" | "pulse") {
+  currentMode = mode;
+  if (mode === "drift") {
+    btnModeDrift.classList.add("active");
+    btnModePulse.classList.remove("active");
+    modeCaption.textContent = "Continuous organic stick drift with zero pattern. Immune to idle detection.";
+    driftInfoBox.classList.remove("hidden");
+    pulseSettingsGroup.classList.add("hidden");
+    btnTestPulse.classList.add("hidden");
+
+    telemLbl1.textContent = "Mode";
+    countdownValue.textContent = "Drift";
+    telemLbl2.textContent = "Motion";
+    lastPulseText.textContent = currentRunning ? "Organic" : "Paused";
+    telemLbl3.textContent = "Cadence";
+    pulseCountText.textContent = "Dynamic";
+  } else {
+    btnModeDrift.classList.remove("active");
+    btnModePulse.classList.add("active");
+    modeCaption.textContent = "Sends periodic input pulses with randomized jitter at chosen intervals.";
+    driftInfoBox.classList.add("hidden");
+    pulseSettingsGroup.classList.remove("hidden");
+    btnTestPulse.classList.remove("hidden");
+
+    telemLbl1.textContent = "Next";
+    telemLbl2.textContent = "Last";
+    telemLbl3.textContent = "Sent";
+    countdownValue.textContent = currentRunning ? "--" : "--";
+  }
+}
+
 function updatePowerState(running: boolean) {
   currentRunning = running;
   if (running) {
     powerStatusLabel.textContent = "ACTIVE";
     powerStatusLabel.className = "power-state-title active";
-    powerStatusSub.textContent = "Anti-AFK pulses running";
+    powerStatusSub.textContent = currentMode === "drift" ? "Random stick drift active" : "Anti-AFK pulses running";
     powerToggleBtn.className = "power-button active";
+    if (currentMode === "drift") {
+      lastPulseText.textContent = "Organic";
+    }
   } else {
     powerStatusLabel.textContent = "PAUSED";
     powerStatusLabel.className = "power-state-title paused";
-    powerStatusSub.textContent = "Click button to start pulses";
+    powerStatusSub.textContent = currentMode === "drift" ? "Click button to start drift" : "Click button to start pulses";
     powerToggleBtn.className = "power-button";
-    countdownValue.textContent = "--";
+    if (currentMode === "drift") {
+      lastPulseText.textContent = "Paused";
+    } else {
+      countdownValue.textContent = "--";
+    }
+    if (ctrlRightStick) ctrlRightStick.style.transform = "translate(0px, 0px)";
+    if (ctrlLeftStick) ctrlLeftStick.style.transform = "translate(0px, 0px)";
   }
 }
 
@@ -195,10 +258,13 @@ function updateFooterNote(minimizeToTray: boolean) {
 }
 
 function applyStatus(status: StatusPayload) {
+  updateModeUI(status.mode);
   updatePowerState(status.running);
   updateDriverState(status.driver_available);
-  pulseCountText.textContent = status.pulse_count.toString();
-  lastPulseText.textContent = formatTimestamp(status.last_pulse_timestamp);
+  if (status.mode === "pulse") {
+    pulseCountText.textContent = status.pulse_count.toString();
+    lastPulseText.textContent = formatTimestamp(status.last_pulse_timestamp);
+  }
 
   intervalSlider.value = status.interval_secs.toString();
   intervalDisplay.textContent = formatDuration(status.interval_secs);
@@ -239,10 +305,50 @@ async function initApp() {
         updateDriverState(false);
       }
     });
+
+    await listen<DriftTickPayload>("drift-tick", (event) => {
+      if (currentMode !== "drift" || !currentRunning) return;
+      if (event.payload.is_user_active) {
+        lastPulseText.textContent = "Player Active";
+        if (ctrlRightStick) ctrlRightStick.style.transform = "translate(0px, 0px)";
+        if (ctrlLeftStick) ctrlLeftStick.style.transform = "translate(0px, 0px)";
+        return;
+      } else {
+        lastPulseText.textContent = "Organic";
+      }
+
+      const maxPx = 14;
+      const rightDx = (event.payload.rx / 32768) * maxPx;
+      const rightDy = (-event.payload.ry / 32768) * maxPx;
+      const leftDx = (event.payload.lx / 32768) * maxPx;
+      const leftDy = (-event.payload.ly / 32768) * maxPx;
+
+      if (ctrlRightStick) ctrlRightStick.style.transform = `translate(${rightDx.toFixed(1)}px, ${rightDy.toFixed(1)}px)`;
+      if (ctrlLeftStick) ctrlLeftStick.style.transform = `translate(${leftDx.toFixed(1)}px, ${leftDy.toFixed(1)}px)`;
+    });
   } catch (err) {
     console.error("Initialization error:", err);
   }
 }
+
+// Mode Selection
+btnModeDrift.addEventListener("click", async () => {
+  try {
+    const updated = await invoke<StatusPayload>("set_mode", { mode: "drift" });
+    applyStatus(updated);
+  } catch (err) {
+    console.error("Failed to switch mode:", err);
+  }
+});
+
+btnModePulse.addEventListener("click", async () => {
+  try {
+    const updated = await invoke<StatusPayload>("set_mode", { mode: "pulse" });
+    applyStatus(updated);
+  } catch (err) {
+    console.error("Failed to switch mode:", err);
+  }
+});
 
 // Power Toggle Click
 powerToggleBtn.addEventListener("click", async () => {

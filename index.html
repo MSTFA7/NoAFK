@@ -184,17 +184,17 @@
         <!-- Quiet, Elegant Telemetry Strip -->
         <div class="telemetry-strip">
           <div class="telemetry-item">
-            <span class="telemetry-lbl">Next</span>
+            <span class="telemetry-lbl" id="telem-lbl-1">Next</span>
             <span id="countdown-value" class="telemetry-val">--</span>
           </div>
           <span class="telemetry-sep">•</span>
           <div class="telemetry-item">
-            <span class="telemetry-lbl">Last</span>
+            <span class="telemetry-lbl" id="telem-lbl-2">Last</span>
             <span id="last-pulse-text" class="telemetry-val">Never</span>
           </div>
           <span class="telemetry-sep">•</span>
           <div class="telemetry-item">
-            <span class="telemetry-lbl">Sent</span>
+            <span class="telemetry-lbl" id="telem-lbl-3">Sent</span>
             <span id="pulse-count-text" class="telemetry-val">0</span>
           </div>
         </div>
@@ -204,34 +204,71 @@
 
       <!-- Settings Section -->
       <section class="settings-section">
-        <!-- Pattern Select -->
+        <!-- Anti-AFK Mode Selection -->
         <div class="setting-item">
           <div class="setting-title-row">
-            <label for="pattern-select" class="setting-title">Pulse Pattern</label>
+            <span class="setting-title">Operation Mode</span>
           </div>
-          <select id="pattern-select" class="monochrome-select">
-            <option value="right_stick_nudge">Right Stick Nudge</option>
-            <option value="left_stick_nudge">Left Stick Nudge</option>
-            <option value="dpad_tap">D-Pad Up Tap</option>
-            <option value="trigger_tap">Right Trigger Tap</option>
-            <option value="spin">Spin (Dual Sticks + Deviation)</option>
-          </select>
+          <div class="segmented-control">
+            <button type="button" id="btn-mode-drift" class="segmented-btn active" title="Continuous organic analog stick drift with zero pattern. Immune to idle detection.">
+              Random Drift
+            </button>
+            <button type="button" id="btn-mode-pulse" class="segmented-btn" title="Periodic input pulses at specified intervals.">
+              Periodic Pulse
+            </button>
+          </div>
+          <span id="mode-caption" class="setting-caption">
+            Continuous organic stick drift with zero pattern or cadence. Immune to idle detection.
+          </span>
         </div>
 
-        <!-- Interval Duration -->
-        <div class="setting-item">
-          <div class="setting-title-row">
-            <label for="interval-slider" class="setting-title">Interval Duration</label>
-            <span id="interval-display" class="interval-text">90s</span>
+        <!-- Drift Info Box (shown in Drift mode) -->
+        <div id="drift-info-box" class="drift-info-box">
+          <div class="drift-info-row">
+            <span class="drift-info-label">Stick Movement:</span>
+            <span class="drift-info-val">Analog (16k - 24k)</span>
           </div>
-          <input type="range" id="interval-slider" class="monochrome-slider" min="15" max="600" step="5" value="90" />
-          <div class="slider-marks">
-            <span>15s</span>
-            <span>2m</span>
-            <span>5m</span>
-            <span>10m</span>
+          <div class="drift-info-row">
+            <span class="drift-info-label">Direction Changes:</span>
+            <span class="drift-info-val">Dynamic (1.8s - 4.2s)</span>
           </div>
-          <span class="setting-caption">Dynamic randomized jitter (+-1 to 15s) applied per pulse.</span>
+          <div class="drift-info-row">
+            <span class="drift-info-label">Pattern:</span>
+            <span class="drift-info-val">Zero (Continuous Random Walk)</span>
+          </div>
+        </div>
+
+        <!-- Pulse Settings Group (shown in Pulse mode) -->
+        <div id="pulse-settings-group" class="hidden">
+          <!-- Pattern Select -->
+          <div class="setting-item">
+            <div class="setting-title-row">
+              <label for="pattern-select" class="setting-title">Pulse Pattern</label>
+            </div>
+            <select id="pattern-select" class="monochrome-select">
+              <option value="right_stick_nudge">Right Stick Nudge</option>
+              <option value="left_stick_nudge">Left Stick Nudge</option>
+              <option value="dpad_tap">D-Pad Up Tap</option>
+              <option value="trigger_tap">Right Trigger Tap</option>
+              <option value="spin">Spin (Dual Sticks + Deviation)</option>
+            </select>
+          </div>
+
+          <!-- Interval Duration -->
+          <div class="setting-item" style="margin-top: 10px;">
+            <div class="setting-title-row">
+              <label for="interval-slider" class="setting-title">Interval Duration</label>
+              <span id="interval-display" class="interval-text">90s</span>
+            </div>
+            <input type="range" id="interval-slider" class="monochrome-slider" min="15" max="600" step="5" value="90" />
+            <div class="slider-marks">
+              <span>15s</span>
+              <span>2m</span>
+              <span>5m</span>
+              <span>10m</span>
+            </div>
+            <span class="setting-caption">Dynamic randomized jitter (+-1 to 15s) applied per pulse.</span>
+          </div>
         </div>
 
         <!-- Controller Passthrough Toggle -->

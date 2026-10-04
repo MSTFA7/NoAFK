@@ -6,28 +6,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use vigem_client::{XButtons, XGamepad};
 
-fn detect_virtual_slot(controller: &VirtualController, xinput: &XInputHandle) -> Option<u32> {
-    if !controller.is_connected() {
-        return None;
-    }
-    let mut probe = XGamepad::default();
-    probe.thumb_lx = 1337;
-    let _ = controller.update_raw(&probe);
-    std::thread::sleep(Duration::from_millis(15));
-
-    let mut detected = None;
-    for slot in 0..4 {
-        if let Ok(st) = xinput.get_state(slot) {
-            if st.raw.Gamepad.sThumbLX == 1337 {
-                detected = Some(slot);
-                break;
-            }
-        }
-    }
-    let _ = controller.update_raw(&XGamepad::default());
-    detected
-}
-
 pub fn start_passthrough_loop(
     controller: Arc<VirtualController>,
     state: Arc<AppState>,
@@ -41,8 +19,6 @@ pub fn start_passthrough_loop(
             }
         };
 
-        let mut virtual_slot: Option<u32> = None;
-        let mut last_detect_attempt = Instant::now() - Duration::from_secs(10);
         let mut active_physical_slot: Option<u32> = None;
         let mut last_activity_time = Instant::now() - Duration::from_secs(10);
         let mut has_reset_to_neutral = true;
@@ -62,21 +38,15 @@ pub fn start_passthrough_loop(
                 continue;
             }
 
-            // Periodically detect virtual slot if not yet detected
-            if virtual_slot.is_none() && last_detect_attempt.elapsed() > Duration::from_secs(2) {
-                last_detect_attempt = Instant::now();
-                virtual_slot = detect_virtual_slot(&controller, &xinput);
-                if let Some(slot) = virtual_slot {
-                    println!("[NoAFK] Virtual controller mapped to XInput Slot {}", slot);
-                }
-            }
+            // Get kernel-reported user index for virtual controller directly from ViGEmBus
+            let virtual_slot = controller.get_user_index();
 
-            // Candidate physical slots: all slots except the detected virtual slot.
-            // If virtual_slot not yet detected, prioritize slots 1, 2, 3 over 0.
+            // Candidate physical slots: all slots EXCEPT the virtual controller slot.
+            // If virtual_slot not yet reported, safely check slots 1, 2, 3 (never slot 0).
             let candidate_slots: Vec<u32> = if let Some(v_slot) = virtual_slot {
                 (0..4).filter(|&s| s != v_slot).collect()
             } else {
-                vec![1, 2, 3, 0]
+                vec![1, 2, 3]
             };
 
             let mut forwarded = false;
@@ -122,8 +92,8 @@ pub fn start_passthrough_loop(
             }
 
             if !forwarded {
-                if last_activity_time.elapsed() < Duration::from_millis(500) {
-                    // Smooth decay forwarding of current physical state within 500ms
+                if last_activity_time.elapsed() < Duration::from_millis(200) {
+                    // Quick decay forwarding of physical state within 200ms
                     if let Some(slot) = active_physical_slot {
                         if let Ok(xstate) = xinput.get_state(slot) {
                             let pad = xstate.raw.Gamepad;
@@ -140,7 +110,7 @@ pub fn start_passthrough_loop(
                         }
                     }
                 } else if !has_reset_to_neutral {
-                    // Safe return to neutral once physical controller is released and idle
+                    // Reset to neutral ONCE when user releases physical controller
                     if !controller.is_pulsing.load(Ordering::SeqCst) {
                         let _ = controller.update_raw(&XGamepad::default());
                         has_reset_to_neutral = true;
